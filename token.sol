@@ -4,9 +4,9 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract MithucoinStable is ERC20, Ownable {
+contract MithucoinStable is ERC20, Ownable { //editable " Mithucoinstable"
     //Note: The code both creates a contract for stablecoin + an erc20 token
-    uint256 public taxFee = 2; // 2% tax fee
+    uint256 public taxFee = 2; // 2% tax fee editable
     address public taxCollector;
     mapping(address => uint256) public reserves; // Collateral reserves for minting/redeeming
 
@@ -15,7 +15,7 @@ contract MithucoinStable is ERC20, Ownable {
     event Minted(address indexed user, uint256 amount, uint256 collateralDeposited);
     event Redeemed(address indexed user, uint256 amount, uint256 collateralWithdrawn);
 
-    constructor() ERC20("Mithucoin", "MITHU") Ownable(msg.sender) {
+    constructor() ERC20("Mithucoin", "MITHU") Ownable(msg.sender) { // editable Mithucoin "MITHU"
         taxCollector = msg.sender; // Set deployer as tax collector
     }
 
