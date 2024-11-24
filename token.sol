@@ -4,18 +4,51 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract Mithucoin is ERC20, Ownable {
+contract MithucoinStable is ERC20, Ownable {
+    //Note: The code both creates a contract for stablecoin + an erc20 token
     uint256 public taxFee = 2; // 2% tax fee
     address public taxCollector;
-// Note: When compiling , set wersion to 0.8.20
+    mapping(address => uint256) public reserves; // Collateral reserves for minting/redeeming
+
     event TaxFeeUpdated(uint256 newFee);
     event TaxCollectorUpdated(address newCollector);
+    event Minted(address indexed user, uint256 amount, uint256 collateralDeposited);
+    event Redeemed(address indexed user, uint256 amount, uint256 collateralWithdrawn);
 
     constructor() ERC20("Mithucoin", "MITHU") Ownable(msg.sender) {
-        // Mint the initial supply of 100 billion tokens
-        _mint(msg.sender, 100_000_000_000 * 10 ** decimals());
-        // Set the deployer as the initial tax collector
-        taxCollector = msg.sender;
+        taxCollector = msg.sender; // Set deployer as tax collector
+    }
+
+    /**
+     * @dev Mint tokens by depositing collateral (e.g., USD).
+     */
+    function mint(uint256 usdAmount) external payable {
+        require(usdAmount > 0, "Amount must be greater than zero");
+
+        // Simulate collateral deposit (use a real system for fiat/crypto collateral handling)
+        reserves[msg.sender] += usdAmount;
+
+        // Mint tokens equivalent to the collateral
+        _mint(msg.sender, usdAmount * 10**decimals());
+
+        emit Minted(msg.sender, usdAmount * 10**decimals(), usdAmount);
+    }
+
+    /**
+     * @dev Redeem tokens to withdraw collateral.
+     */
+    function redeem(uint256 tokenAmount) external {
+        require(balanceOf(msg.sender) >= tokenAmount, "Insufficient token balance");
+
+        // Calculate collateral equivalent of tokens
+        uint256 usdAmount = tokenAmount / 10**decimals();
+        require(reserves[msg.sender] >= usdAmount, "Insufficient reserve backing");
+
+        // Burn tokens and update reserve
+        _burn(msg.sender, tokenAmount);
+        reserves[msg.sender] -= usdAmount;
+
+        emit Redeemed(msg.sender, tokenAmount, usdAmount);
     }
 
     /**
