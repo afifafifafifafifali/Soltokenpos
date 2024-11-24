@@ -1,127 +1,113 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+contract StableCoin {
 
-contract MithucoinStable is ERC20, Ownable { //editable " Mithucoinstable"
-    //Note: The code both creates a contract for stablecoin + an erc20 token
-    uint256 public taxFee = 2; // 2% tax fee editable
-    address public taxCollector;
-    mapping(address => uint256) public reserves; // Collateral reserves for minting/redeeming
+    string public name = "StableCoin"; // editable
+    string public symbol = "STC";  // editable
+    uint8 public decimals = 18;   // editable
+    uint256 private _totalSupply;  // must be given in the deploy field
+    uint256 public pegPrice; // The price of 1 token in USD (with 18 decimal places)  // must be given in the deploy field
+    address public owner;
 
-    event TaxFeeUpdated(uint256 newFee);
-    event TaxCollectorUpdated(address newCollector);
-    event Minted(address indexed user, uint256 amount, uint256 collateralDeposited);
-    event Redeemed(address indexed user, uint256 amount, uint256 collateralWithdrawn);
+    // Mapping from address to balance
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
 
-    constructor() ERC20("Mithucoin", "MITHU") Ownable(msg.sender) { // editable Mithucoin "MITHU"
-        taxCollector = msg.sender; // Set deployer as tax collector
+    // Events for minting, burning, and peg price changes
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+    event Mint(address indexed account, uint256 amount);
+    event Burn(address indexed account, uint256 amount);
+    event PegPriceUpdated(uint256 newPrice);
+
+    constructor(uint256 initialSupply, uint256 initialPegPrice) {
+        owner = msg.sender; // Set the owner as the account that deploys the contract
+        pegPrice = initialPegPrice; // Set the initial peg price
+        _totalSupply = initialSupply * 10 ** uint256(decimals); // Adjust total supply for decimals
+        _balances[owner] = _totalSupply; // Assign the initial supply to the owner
+        emit Transfer(address(0), owner, _totalSupply); // Emit transfer event for the initial mint
     }
 
-    /**
-     * @dev Mint tokens by depositing collateral (e.g., USD).
-     */
-    function mint(uint256 usdAmount) external payable {
-        require(usdAmount > 0, "Amount must be greater than zero");
-
-        // Simulate collateral deposit (use a real system for fiat/crypto collateral handling)
-        reserves[msg.sender] += usdAmount;
-
-        // Mint tokens equivalent to the collateral
-        _mint(msg.sender, usdAmount * 10**decimals());
-
-        emit Minted(msg.sender, usdAmount * 10**decimals(), usdAmount);
+    modifier onlyOwner() {
+        require(msg.sender == owner, "StableCoin: Only the owner can call this function");
+        _;
     }
 
-    /**
-     * @dev Redeem tokens to withdraw collateral.
-     */
-    function redeem(uint256 tokenAmount) external {
-        require(balanceOf(msg.sender) >= tokenAmount, "Insufficient token balance");
-
-        // Calculate collateral equivalent of tokens
-        uint256 usdAmount = tokenAmount / 10**decimals();
-        require(reserves[msg.sender] >= usdAmount, "Insufficient reserve backing");
-
-        // Burn tokens and update reserve
-        _burn(msg.sender, tokenAmount);
-        reserves[msg.sender] -= usdAmount;
-
-        emit Redeemed(msg.sender, tokenAmount, usdAmount);
+    // ERC-20 Functions
+    function totalSupply() public view returns (uint256) {
+        return _totalSupply;
     }
 
-    /**
-     * @dev Override transfer function to include tax mechanism.
-     */
-    function transfer(address recipient, uint256 amount)
-        public
-        override
-        returns (bool)
-    {
-        uint256 fee = calculateTax(amount);
-        uint256 amountAfterFee = amount - fee;
+    function balanceOf(address account) public view returns (uint256) {
+        return _balances[account];
+    }
 
-        // Transfer the tax fee to the tax collector
-        if (fee > 0) {
-            _transfer(_msgSender(), taxCollector, fee);
-        }
+    function transfer(address recipient, uint256 amount) public returns (bool) {
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+        require(_balances[msg.sender] >= amount, "ERC20: transfer amount exceeds balance");
 
-        // Transfer the remaining amount to the recipient
-        _transfer(_msgSender(), recipient, amountAfterFee);
-
+        _balances[msg.sender] -= amount;
+        _balances[recipient] += amount;
+        emit Transfer(msg.sender, recipient, amount);
         return true;
     }
 
-    /**
-     * @dev Override transferFrom function to include tax mechanism.
-     */
-    function transferFrom(
-        address sender,
-        address recipient,
-        uint256 amount
-    ) public override returns (bool) {
-        uint256 fee = calculateTax(amount);
-        uint256 amountAfterFee = amount - fee;
+    function allowance(address owner, address spender) public view returns (uint256) {
+        return _allowances[owner][spender];
+    }
 
-        // Transfer the tax fee to the tax collector
-        if (fee > 0) {
-            _transfer(sender, taxCollector, fee);
-        }
-
-        // Transfer the remaining amount to the recipient
-        _transfer(sender, recipient, amountAfterFee);
-
-        // Update the allowance
-        uint256 currentAllowance = allowance(sender, _msgSender());
-        require(currentAllowance >= amount, "ERC20: transfer amount exceeds allowance");
-        _approve(sender, _msgSender(), currentAllowance - amount);
-
+    function approve(address spender, uint256 amount) public returns (bool) {
+        _allowances[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
         return true;
     }
 
-    /**
-     * @dev Update the tax fee percentage (only owner).
-     */
-    function updateTaxFee(uint256 newFee) external onlyOwner {
-        require(newFee <= 10, "Tax fee must not exceed 10%");
-        taxFee = newFee;
-        emit TaxFeeUpdated(newFee);
+    function transferFrom(address sender, address recipient, uint256 amount) public returns (bool) {
+        require(sender != address(0), "ERC20: transfer from the zero address");
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+        require(_balances[sender] >= amount, "ERC20: transfer amount exceeds balance");
+        require(_allowances[sender][msg.sender] >= amount, "ERC20: transfer amount exceeds allowance");
+
+        _balances[sender] -= amount;
+        _balances[recipient] += amount;
+        _allowances[sender][msg.sender] -= amount;
+        emit Transfer(sender, recipient, amount);
+        return true;
     }
 
-    /**
-     * @dev Update the tax collector address (only owner).
-     */
-    function updateTaxCollector(address newCollector) external onlyOwner {
-        require(newCollector != address(0), "Invalid tax collector address");
-        taxCollector = newCollector;
-        emit TaxCollectorUpdated(newCollector);
+    // Stablecoin Functions
+
+    // Set the peg price (used to maintain the value of the stablecoin)
+    function setPegPrice(uint256 newPrice) external onlyOwner {
+        pegPrice = newPrice;
+        emit PegPriceUpdated(newPrice);
     }
 
-    /**
-     * @dev Calculate the tax fee for a given amount.
-     */
-    function calculateTax(uint256 amount) internal view returns (uint256) {
-        return (amount * taxFee) / 100;
+    // Mint new stablecoins to a specified address (only owner can mint)
+    function mint(address to, uint256 amount) external onlyOwner {
+        _mint(to, amount);
+        emit Mint(to, amount);
+    }
+
+    // Burn stablecoins from a specified address (only owner can burn)
+    function burn(address from, uint256 amount) external onlyOwner {
+        _burn(from, amount);
+        emit Burn(from, amount);
+    }
+
+    // Internal minting function (only callable within the contract)
+    function _mint(address account, uint256 amount) internal {
+        _totalSupply += amount;
+        _balances[account] += amount;
+        emit Transfer(address(0), account, amount);
+    }
+
+    // Internal burning function (only callable within the contract)
+    function _burn(address account, uint256 amount) internal {
+        require(_balances[account] >= amount, "StableCoin: burn amount exceeds balance");
+        _totalSupply -= amount;
+        _balances[account] -= amount;
+        emit Transfer(account, address(0), amount);
     }
 }
